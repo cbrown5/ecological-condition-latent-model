@@ -23,7 +23,7 @@ post_mean <- data.frame(t(apply(post, 2, mean)))
 
 N1 <- 26
 init_fraction1 <- 0.2
-nsims <- 50
+nsims <- 30
 r_est <- 0.3
 
 params <- c("beta_u",
@@ -44,8 +44,8 @@ params <- c("beta_u",
 # Missing years of data
 # ----------------- #
 
-# yrs_missing <- c(1, 6, 11, 16) #first year, so 11 = 10 years missing, 1 = 
-yrs_missing <- c(1, 6) #first year, so 11 = 10 years missing, 1 =
+yrs_missing <- c(1, 6, 11, 16) #first year, so 11 = 10 years missing, 1 =
+# yrs_missing <- c(1, 6) #first year, so 11 = 10 years missing, 1 =
 # no years missing 
 
 # --------------------------
@@ -92,15 +92,15 @@ datout <- datsim %>%
                         seed = flowseed, future = FALSE) %>%
       as.numeric()
   
-    x <- simmod(1, post_mean, nyears, 
+    x <- simmod(1, postmed, nyears, 
                 init_fraction1, eseries,
                 flowsim, 1)
     
-    #Setup data 
+    #Setup data and centre NDVI and pasture variables
     datstan2 <- within(datstan, {
       lnCPUE = x$lnCPUE
       catches = x$catches
-      pasture = x$pasture
+      pasture = x$pasture - mean(x$pasture)
       Npasture = length(x$pasture)
       i_pasture = 1:length(x$pasture)
       flow = flowsim
@@ -109,7 +109,7 @@ datout <- datsim %>%
       
       Nndvi = nyears - yrs_missing + 1
       i_ndvi = yrs_missing:nyears
-      ndvi = x$ndvi[yrs_missing:nyears]
+      ndvi = x$ndvi[yrs_missing:nyears] - mean(x$ndvi, na.rm = TRUE)
     })
     
     
@@ -121,17 +121,23 @@ datout <- datsim %>%
                     list(lnr = log(r_est) , lnq = log(0.05), sigma_cpue = 0.1,
                          sigma_u =0.01, lnK = log(3000), 
                          beta_u = 0.01,
-                         beta_nu = 1.5
+                         beta_nu = 1.5,
+                         beta_ndvi = 0.3,
+                         beta_pasture = 0.05
                     ),
                     list(lnr = log(r_est)*1.2 , lnq = log(0.1), sigma_cpue = 0.15,
                          sigma_u = 0.1, lnK = log(5000),
                          beta_u = 0.05,
-                         beta_nu = 2
+                         beta_nu = 2,
+                         beta_ndvi = 0.2,
+                         beta_pasture = 0.15
                     ),
                     list(lnr = log(r_est)*0.6 , lnq = log(0.02), sigma_cpue = 0.05,
                          sigma_u = 0.2, lnK = log(2000),
                          beta_u = 0.1,
-                         beta_nu = 1
+                         beta_nu = 1,
+                         beta_ndvi = 0.45,
+                         beta_pasture = 0.3
                     )))
     
     
@@ -160,19 +166,36 @@ datout <- datsim %>%
                 upr50 = quantile(val, 0.75),
                 lwr50 = quantile(val, 0.25))
     
-    p2 <- post_mean %>% pivot_longer(1:ncol(post_mean), names_to = "param",
+    p2 <- postmed %>% pivot_longer(1:ncol(postmed), names_to = "param",
                                    values_to = "truth")
     psall <- ps2 %>% left_join(p2) %>% left_join(rhats)
     psall$isim <- flowseed
     psall$yrs_missing <- yrs_missing
-    
-    fitout <- list(din = datstan2, sfit = sout,
-                             paramsum = psall)
   
+    #
+    # R2 values 
+    #
+    fitcors <- data.frame(ndvi = NA,
+                          pasture = NA,
+                          lncpue = NA,
+                          nu = NA)
+    i <- grepl("ndvi_pred", rn)
+    fitcors$ndvi <- cor(x$ndvi,data.frame(s$summary[i,])$X50.)^2
+    i <- grepl("pasture_pred", rn)
+    fitcors$pasture <- cor(x$pasture,data.frame(s$summary[i,])$X50.)^2
+    i <- grepl("lnCPUE_hat", rn)
+    fitcors$lncpue = cor(datstan2$lnCPUE,data.frame(s$summary[i,])$X50.)^2
+    i <- grepl("nu\\[", rn)
+    fitcors$nu <- cor(x$nu,data.frame(s$summary[i,])$X50.)^2
+    fitcors$sim <- flowseed
+    fitcors$yrs_missing <- yrs_missing
+    fitout <- list(din = datstan2, #sfit = sout,
+                             paramsum = psall,
+                   fitcors = fitcors)
     fitout$yrs_missing <- yrs_missing
     fitout
   })
 
-save(datout,params, file = "../models/2021-11-10_param-sims.rda")
+save(datout,params, file = "../models/2021-11-24_param-sims.rda")
 
 
