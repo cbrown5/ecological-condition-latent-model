@@ -1,6 +1,6 @@
 # Estimate reference condition and emergence time
 #CJ Brown 
-# 2021-02-15
+# 2022-06-18
 #
 
 rm(list = ls())
@@ -9,7 +9,6 @@ library(dplyr)
 library(forecast)
 library(DataGLMRepeat)
 library(cowplot)
-library(rethinking)
 library(tidyr)
 library(patchwork)
 
@@ -18,7 +17,7 @@ source("model-functions.R")
 load("../models/2021-08-03_model-fit-no-inun-logflow-Binit20perc-q0.rda")
 #file not provided on github due to file size
 
-post <- extract.samples(fitm1) %>% data.frame()
+post <- rstan::extract(fitm1) %>% data.frame()
 post$imcmc <- 1:nrow(post)
 nmcmc <- nrow(post)
 
@@ -47,13 +46,13 @@ acf(datstan$flow)
 m1 <- Arima(dat2$Streamflow_std, c(6, 0, 3))
 AIC(m1)
 summary(m1)
-acf(resid(m1))
-plot(simulate(m1, nyears, seed = 42, future = FALSE))
-points(simulate(m1, nyears, seed = 42, future = FALSE))
-lines(dat2$Streamflow_std, col = "red")
+# acf(resid(m1))
+# plot(simulate(m1, nyears, seed = 42, future = FALSE))
+# points(simulate(m1, nyears, seed = 42, future = FALSE))
+# lines(dat2$Streamflow_std, col = "red")
 y <- simulate(m1, nyears, seed = 42, future = FALSE) +
   1:nyears*1
-plot(y)
+# plot(y)
 
 #
 # Equilibrium effort 
@@ -81,10 +80,10 @@ x <- simmod(100, post, nyears,
             flowsim, 100)
 datplot <- data.frame(n = x$n, lnCPUE = x$lnCPUE, 
                       ln_cpue_data = c(dat2$ln_cpue, rep(NA, 3)))
-ggplot(datplot) + 
-  aes(x = n) + 
-  geom_line(aes(y = lnCPUE)) + 
-  geom_line(aes(y = ln_cpue_data), col = "red") 
+# ggplot(datplot) + 
+#   aes(x = n) + 
+#   geom_line(aes(y = lnCPUE)) + 
+#   geom_line(aes(y = ln_cpue_data), col = "red") 
 
 #
 # Simulate historical flow series and from model 
@@ -130,8 +129,12 @@ dout2$pasture_mean <- (dout2$pasture_mean*sd(dat2$pasture_bio, na.rm = TRUE)) + 
 
 #summarize quantiles for each year
 dsum <- dout2 %>% group_by(n, trend, effort_rel) %>%
-  summarize(across(lnCPUE:nu, ~quantile(.x, 0.05, na.rm = TRUE),
+  summarize(across(lnCPUE:nu, ~quantile(.x, 0.025, na.rm = TRUE),
+                   .names = "{.col}-q025"),
+            across(lnCPUE:nu, ~quantile(.x, 0.05, na.rm = TRUE),
                    .names = "{.col}-q05"),
+            across(lnCPUE:nu, ~quantile(.x, 0.1, na.rm = TRUE),
+                   .names = "{.col}-q10"),
             across(lnCPUE:nu, ~quantile(.x, 0.2, na.rm = TRUE),
                    .names = "{.col}-q20"),
             across(lnCPUE:nu, ~quantile(.x, 0.4, na.rm = TRUE),
@@ -142,25 +145,29 @@ dsum <- dout2 %>% group_by(n, trend, effort_rel) %>%
                    .names = "{.col}-q60"),
             across(lnCPUE:nu, ~quantile(.x, 0.8, na.rm = TRUE),
                    .names = "{.col}-q80"),
+            across(lnCPUE:nu, ~quantile(.x, 0.9, na.rm = TRUE),
+                   .names = "{.col}-q90"),
             across(lnCPUE:nu, ~quantile(.x, 0.95, na.rm = TRUE),
-                   .names = "{.col}-q95")) %>%
-  pivot_longer(4:53, names_to = "Variable",
+                   .names = "{.col}-q95"),
+            across(lnCPUE:nu, ~quantile(.x, 0.975, na.rm = TRUE),
+                   .names = "{.col}-q975")) %>%
+  pivot_longer(4:91, names_to = "Variable",
                values_to = "Val") %>%
   separate(Variable, into = c("Var", "Quant"), sep = "-") %>%
   pivot_wider(names_from = "Quant",
               values_from = "Val")
   
 
-get_td(dsum, "q20", trends[1], "lnCPUE_mean")
-get_td(dsum, "q20", trends[1], "ndvi_mean")
-get_td(dsum, "q20", trends[1], "pasture_mean")
-get_td(dsum, "q20", trends[1], "SP")
-get_td(dsum, "q20", trends[1], "nu")
+get_td(dsum, "q10", trends[1], "lnCPUE_mean")
+get_td(dsum, "q10", trends[1], "ndvi_mean")
+get_td(dsum, "q10", trends[1], "pasture_mean")
+get_td(dsum, "q10", trends[1], "SP")
+get_td(dsum, "q10", trends[1], "nu")
 
 dloop <- expand.grid(Var = c("lnCPUE_mean", "ndvi_mean", "pasture_mean", "nu"),
                       trends = trends[trends<0], 
                      effort_rel = effort_rel,
-                      qs = c("q05", "q20", "q40"))
+                      qs = c("q05", "q10", "q20"))
 
 dloop$td <- lapply(1:nrow(dloop), function(x) 
   get_td_effort(dsum, dloop$qs[x],dloop$trends[x], 
@@ -173,6 +180,7 @@ td_dat$Quantile <- as.numeric(substr(td_dat$qs, start = 2, stop= 5))
 # ------------ 
 # Plots 
 # ------------ 
+
 dsum2 <- filter(dsum, Var != "SP") %>%
   mutate(Trend = exp(trend))
 
@@ -207,7 +215,7 @@ g1a <-  ggplot(dsum3_tempa) +
               alpha = 0.25,
               color = NA) + 
   theme_classic() + 
-  guides(color = FALSE) + 
+  labs(color = "Trend \n (multiples /year)") +
   xlab("Year") + 
   ylab("Catch per unit effort \n (Tonnes per fishing year)")
 g1a
@@ -229,7 +237,7 @@ g1b <-  ggplot(dsum3_tempb) +
               alpha = 0.25,
               color = NA) + 
   theme_classic() + 
-  guides(color = FALSE) + 
+  labs(color = "Trend \n (multiples /year)") +
   xlab("Year") + 
   ylab("NDVI")
 g1b
@@ -258,7 +266,8 @@ g1c <-  ggplot(dsum3_tempc) +
 g1c
 
 g1 <- g1a + g1b + g1c + 
-  plot_annotation(tag_levels = 'A')
+  plot_annotation(tag_levels = 'A') +
+  plot_layout(guides = "collect")
 
 
 
@@ -291,7 +300,7 @@ g1d
 # Emergence time
 #
 td_dat$Quantile <- td_dat$qs
-td_dat$Quantile <- factor(td_dat$qs, labels = c("5%", "20%", "40%"))
+td_dat$Quantile <- factor(td_dat$qs, labels = c("2.5%", "5%", "10%"))
 td_dat$Var <- factor(td_dat$Var, labels = c("CPUE", "NDVI", "Pasture",
                                             "Latent condition"))
 
@@ -336,12 +345,12 @@ g3
 # Save plots 
 #
 
-ggsave("../figures/2021-08-05_emergence_plot.png", g1,
+ggsave("../figures/2022-06-18_emergence_plot.png", g1,
        width = 8, height = 3)
-ggsave(g2, file = "../figures/2021-08-05_emergence-times.png",
+ggsave(g2, file = "../figures/2022-06-18_emergence-times.png",
        width = 6, height = 3)
 
-ggsave(g3, file = "../figures/2021-08-05_emergence-times-increased-effort.png",
+ggsave(g3, file = "../figures/2022-06-18_emergence-times-increased-effort.png",
        width = 6, height = 3)
 
 

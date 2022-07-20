@@ -98,7 +98,7 @@ rparams <- logNormalParams(r_est, r_est*0.3)
 # Obs and process errors
 #
 
-#Play round with this until you get desired multiplier on CPUE/biomass
+#Choose parameters so you get desired multiplier on CPUE/biomass
 
 #Prior quantiles on SD
 qexp(c(0.05,0.95), 2)

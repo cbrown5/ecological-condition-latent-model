@@ -8,12 +8,13 @@ library(dplyr)
 library(tidyr)
 library(readr)
 library(rstan)
-library(rethinking)
 library(patchwork)
 
 #version with flow logged
 load("../models/2021-08-03_model-fit-no-inun-logflow-Binit20perc-q0.rda")
- post <- extract.samples(fitm1) %>% data.frame()
+
+
+ post <- rstan::extract(fitm1) %>% data.frame()
 
 #
 #Function to extract samples for temporal params
@@ -103,7 +104,7 @@ gnu <- ggplot(nu_est) +
   geom_ribbon(aes(ymin = X25., ymax = X75.), alpha = 0.35, color = NA, fill = "seagreen") + 
   geom_ribbon(aes(ymin = X2.5., ymax = X97.5.), alpha = 0.5, color = NA, fill = "seagreen") + 
   theme_classic() + 
-  ylab("Ecological condition \n indicator") + 
+  ylab("Ecological condition \n index") + 
   txtplot
 gnu
 
@@ -232,7 +233,7 @@ pw2 <- pw  + plot_annotation(tag_levels = 'A') +
   plot_layout(ncol = 2, widths = c(1,2)) & 
   theme(plot.tag = element_text(size = 16)) 
 
-ggsave(pw2, file = "../figures/2021-08-03_data-fits-logflow.png",
+ggsave(pw2, file = "../figures/2022-06-18_data-fits-logflow.png",
        width = 10, height = 8)
 
 # gflow

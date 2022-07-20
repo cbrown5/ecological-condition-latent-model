@@ -1,4 +1,4 @@
-# Code to support "Detecting change in interconnected ecosystem assets to inform indicators of condition in environmental economic accounts"
+# Code to support "Ecosystem services in connected catchment to coast ecosystems: monitoring to detect emerging trends"
 
 Christopher J. Brown et al.
 Contact: chris.brown@griffith.edu.au

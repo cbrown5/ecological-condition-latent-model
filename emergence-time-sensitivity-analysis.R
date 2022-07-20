@@ -10,7 +10,6 @@ library(dplyr)
 library(forecast)
 library(DataGLMRepeat)
 library(cowplot)
-library(rethinking)
 library(tidyr)
 library(patchwork)
 
@@ -23,7 +22,7 @@ td_dat <- NULL
 
 for (i in 1:nmodels){
   load(paste0("../models/",models[i]))
-  post <- extract.samples(fitm1) %>% data.frame()
+  post <- rstan::extract(fitm1) %>% data.frame()
   post$imcmc <- 1:nrow(post)
   nmcmc <- nrow(post)
   
@@ -47,7 +46,7 @@ for (i in 1:nmodels){
   # Fit ARMA 
   #
   
-  acf(datstan$flow)
+  # acf(datstan$flow)
   m1 <- Arima(dat2$Streamflow_std, c(6, 0, 3))
   
   #
@@ -111,6 +110,8 @@ for (i in 1:nmodels){
   dsum <- dout2 %>% group_by(n, trend) %>%
     summarize(across(lnCPUE:pasture_mean, ~quantile(.x, 0.05, na.rm = TRUE),
                      .names = "{.col}-q05"),
+              across(lnCPUE:pasture_mean, ~quantile(.x, 0.1, na.rm = TRUE),
+                     .names = "{.col}-q10"),
               across(lnCPUE:pasture_mean, ~quantile(.x, 0.2, na.rm = TRUE),
                      .names = "{.col}-q20"),
               across(lnCPUE:pasture_mean, ~quantile(.x, 0.4, na.rm = TRUE),
@@ -121,9 +122,11 @@ for (i in 1:nmodels){
                      .names = "{.col}-q60"),
               across(lnCPUE:pasture_mean, ~quantile(.x, 0.8, na.rm = TRUE),
                      .names = "{.col}-q80"),
+              across(lnCPUE:pasture_mean, ~quantile(.x, 0.9, na.rm = TRUE),
+                     .names = "{.col}-q90"),
               across(lnCPUE:pasture_mean, ~quantile(.x, 0.95, na.rm = TRUE),
                      .names = "{.col}-q95")) %>%
-    pivot_longer(3:51, names_to = "Variable", 
+    pivot_longer(3:65, names_to = "Variable", 
                  values_to = "Val") %>%
     separate(Variable, into = c("Var", "Quant"), sep = "-") %>%
     pivot_wider(names_from = "Quant",
@@ -131,7 +134,7 @@ for (i in 1:nmodels){
   
   dloop <- expand.grid(Var = c("lnCPUE_mean", "ndvi_mean", "pasture_mean"),
                        trends = trends[trends<0], 
-                       qs = c("q05", "q20", "q40"))
+                       qs = c("q05", "q10", "q20"))
   
   dloop$td <- lapply(1:nrow(dloop), function(x) 
     get_td(dsum, dloop$qs[x],dloop$trends[x], 
@@ -143,7 +146,7 @@ for (i in 1:nmodels){
 }
 
 td_dat <- bind_rows(td_dat)
-td_dat$Quantile <- factor(td_dat$qs, labels = c("5%", "20%", "40%"))
+td_dat$Quantile <- factor(td_dat$qs, labels = c("5%", "10%", "20%"))
 td_dat$Var <- factor(td_dat$Var, labels = c("CPUE", "NDVI", "Pasture"))
 td_dat$`Initial biomass (%)` <-  with(td_dat, 
                       as.numeric(substr(model,start = (nchar(models[1])-12),
